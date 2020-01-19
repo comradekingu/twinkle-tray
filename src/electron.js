@@ -2,7 +2,7 @@ const electron = require("electron");
 const path = require('path');
 const fs = require('fs')
 const { nativeTheme, systemPreferences, Menu, Tray, BrowserWindow, ipcMain, app, screen } = require('electron')
-const { exec } = require('child_process');
+const { exec, fork } = require('child_process');
 const isDev = require("electron-is-dev");
 const regedit = require('regedit')
 const Color = require('color')
@@ -62,6 +62,25 @@ var wmi = new WmiClient({
 // Fix regedit tool path in production
 if(!isDev) regedit.setExternalVBSLocation(path.join(path.dirname(app.getPath('exe')), '.\\resources\\node_modules\\regedit\\vbs'));
 
+// Start thread for monitor checks
+let monitorsThread = fork(path.join(__dirname, "./refresh-monitors.js"))
+monitorsThread.on('message', (data) => {
+
+    monitors = data.payload
+    applyOrder()
+    sendToAllWindows('monitors-updated', monitors)
+  
+    // Get names
+  
+    refreshNames(() => {
+      sendToAllWindows('names-updated', monitors)
+    })
+})
+monitorsThread.send({type: "isDev", payload: isDev})
+
+function requestMonitors() {
+  monitorsThread.send({type: "request"})
+}
 
 
 //
@@ -316,6 +335,9 @@ function getAccentColors() {
 //
 
 refreshMonitors = async () => {
+
+  requestMonitors()
+  return false
 
   let foundMonitors = []
   let local = 0
